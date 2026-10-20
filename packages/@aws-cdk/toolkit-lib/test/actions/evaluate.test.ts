@@ -71,7 +71,7 @@ describe('evaluate', () => {
   test('replaces references, attributes and pseudo parameters with their deployed values', async () => {
     // GIVEN
     givenDeployedStack();
-    mockCloudControlClient.on(GetResourceCommand).rejects(new Error('cloud control is unavailable'));
+    mockCloudControlClient.on(GetResourceCommand).rejects(Object.assign(new Error('Resource not found'), { name: 'ResourceNotFoundException' }));
 
     // WHEN
     const cx = await cdkOutFixture(toolkit, FIXTURE);
@@ -110,6 +110,19 @@ describe('evaluate', () => {
     expect(stack.unresolved).toEqual([]);
     expect(stack.template.Outputs.BucketDomain.Value).toEqual('stack1-mybucket-1a2b3c.s3.us-east-1.amazonaws.com');
     expect(stack.template.Rules.CheckBootstrapVersion).toEqual(template.Rules.CheckBootstrapVersion);
+  });
+
+  test('fails, rather than reporting expressions as unresolved, when AWS calls fail', async () => {
+    // GIVEN
+    givenDeployedStack();
+    mockCloudControlClient.on(GetResourceCommand).rejects(Object.assign(new Error('Rate exceeded'), { name: 'ThrottlingException' }));
+
+    // WHEN
+    const cx = await cdkOutFixture(toolkit, FIXTURE);
+
+    // THEN
+    await expect(toolkit.evaluate(cx, { stacks: { strategy: StackSelectionStrategy.ALL_STACKS } }))
+      .rejects.toThrow(/Could not find 'RegionalDomainName' attribute/);
   });
 
   test('fails when the stack is not deployed', async () => {

@@ -442,3 +442,52 @@ describe('evaluateCfnExpression', () => {
     });
   });
 });
+
+describe('parameter values', () => {
+  const template: Template = {
+    Parameters: { Suffix: { Type: 'String', Default: 'default-suffix' }, Blank: { Type: 'String', Default: '' } },
+  };
+
+  test('an empty string deployed value is used, not the default', async () => {
+    const evaluateCfnTemplate = new EvaluateCloudFormationTemplate({
+      template, stackName: 'test-stack', parameters: { Suffix: '' }, account: '0123456789', region: 'ap-south-east-2', partition: 'aws', sdk, stackArtifact: {} as any,
+    });
+
+    expect(await evaluateCfnTemplate.evaluateCfnExpression({ Ref: 'Suffix' })).toEqual('');
+  });
+
+  test('an empty string default is used', async () => {
+    const evaluateCfnTemplate = new EvaluateCloudFormationTemplate({
+      template, stackName: 'test-stack', parameters: {}, account: '0123456789', region: 'ap-south-east-2', partition: 'aws', sdk, stackArtifact: {} as any,
+    });
+
+    expect(await evaluateCfnTemplate.evaluateCfnExpression({ Ref: 'Blank' })).toEqual('');
+  });
+});
+
+describe('failed Cloud Control lookups', () => {
+  beforeEach(() => {
+    restoreSdkMocksToDefault();
+  });
+
+  test('keep the original error as the cause', async () => {
+    mockCloudFormationClient.on(ListStackResourcesCommand).resolves({
+      StackResourceSummaries: [{
+        LogicalResourceId: 'Topic',
+        PhysicalResourceId: 'arn:aws:sns:us-east-1:0123456789:topic',
+        ResourceType: 'AWS::SNS::Topic',
+        ResourceStatus: 'CREATE_COMPLETE',
+        LastUpdatedTimestamp: new Date(),
+      }],
+    });
+    const throttled = Object.assign(new Error('Rate exceeded'), { name: 'ThrottlingException' });
+    mockCloudControlClient.on(GetResourceCommand).rejects(throttled);
+    const evaluateCfnTemplate = createEvaluateCloudFormationTemplate({ Resources: { Topic: { Type: 'AWS::SNS::Topic' } } });
+
+    const error = await evaluateCfnTemplate.evaluateCfnExpression({ 'Fn::GetAtt': ['Topic', 'TopicName'] }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(CfnEvaluationException);
+    expect(error.cause).toBe(throttled);
+  });
+});
+

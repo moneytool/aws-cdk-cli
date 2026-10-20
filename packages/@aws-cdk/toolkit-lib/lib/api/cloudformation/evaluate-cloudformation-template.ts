@@ -303,7 +303,7 @@ export class EvaluateCloudFormationTemplate {
 
       async Ref(logicalId: string): Promise<string> {
         const refTarget = await self.findRefTarget(logicalId);
-        if (refTarget) {
+        if (refTarget !== undefined) {
           return refTarget;
         } else {
           throw new CfnEvaluationException(`Parameter or resource '${logicalId}' could not be found for evaluation`);
@@ -313,7 +313,7 @@ export class EvaluateCloudFormationTemplate {
       async 'Fn::GetAtt'(logicalId: string, attributeName: string): Promise<string> {
         // ToDo handle the 'logicalId.attributeName' form of Fn::GetAtt
         const attrValue = await self.findGetAttTarget(logicalId, attributeName);
-        if (attrValue) {
+        if (attrValue !== undefined) {
           return attrValue;
         } else {
           throw new CfnEvaluationException(
@@ -505,15 +505,15 @@ export class EvaluateCloudFormationTemplate {
       return this.cachedUrlSuffix;
     }
 
-    // Try finding the ref in the passed in parameters
+    // Try finding the ref in the passed in parameters (an empty string is a valid parameter value)
     const parameterTarget = this.context[logicalId];
-    if (parameterTarget) {
+    if (parameterTarget !== undefined) {
       return parameterTarget;
     }
 
     // If not in the passed in parameters, see if there is a default value in the template parameter that was not passed in
     const defaultParameterValue = this.template.Parameters?.[logicalId]?.Default;
-    if (defaultParameterValue) {
+    if (defaultParameterValue !== undefined) {
       return defaultParameterValue;
     }
 
@@ -614,7 +614,7 @@ export class EvaluateCloudFormationTemplate {
     } catch (error: any) {
       // Cloud Control lookup failed — fall through to the error below
       throw new CfnEvaluationException(`Could not find '${attribute}' attribute of the '${resource.ResourceType}' resource because` +
-        `an error occured while attempting to retrieve the information: '${error.name}:${error.message}'`);
+        `an error occured while attempting to retrieve the information: '${error.name}:${error.message}'`, { cause: error });
     }
 
     throw new CfnEvaluationException(

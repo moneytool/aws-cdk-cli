@@ -713,8 +713,10 @@ export class Toolkit extends CloudAssemblySourceBuilder {
       if (!deployed.exists) {
         throw new ToolkitError('StackNotDeployed', `stack '${stack.stackName}' is not deployed in ${stackEnv.resolvedEnvironment.name}, deploy it before evaluating its template`);
       }
+      const noEcho = Object.entries(stack.template.Parameters ?? {}).filter(([, p]: [string, any]) => String(p.NoEcho) === 'true').map(([n]) => n);
       const parameters = {
-        ...deployed.parameters,
+        // NoEcho values come back masked; expressions that use them are reported as unresolved instead
+        ...Object.fromEntries(Object.entries(deployed.parameters).filter(([name]) => !noEcho.includes(name))),
         // pseudo parameters the evaluator does not provide itself
         'AWS::StackName': stack.stackName,
         'AWS::StackId': deployed.stackId,
