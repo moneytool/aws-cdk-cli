@@ -2,7 +2,7 @@ import type { EvaluateCloudFormationTemplate } from '../../../lib/api/cloudforma
 import { CfnEvaluationException, evaluateTemplateBestEffort } from '../../../lib/api/cloudformation';
 
 /**
- * An evaluator that knows a fixed set of Refs and fails on everything else,
+ * An evaluator that knows a fixed set of Refs and Fn::Join, and fails on everything else,
  * mirroring how EvaluateCloudFormationTemplate evaluates nested arguments.
  */
 function fakeEvaluator(refs: { [logicalId: string]: string }): EvaluateCloudFormationTemplate {
@@ -55,7 +55,7 @@ describe('evaluateTemplateBestEffort', () => {
           Type: 'AWS::SSM::Parameter',
           Properties: {
             Value: { Ref: 'Bucket' },
-            Description: { 'Fn::If': ['IsProd', 'prod', 'dev'] },
+            Description: { 'Fn::GetAZs': '' },
           },
         },
       },
@@ -63,12 +63,12 @@ describe('evaluateTemplateBestEffort', () => {
 
     expect(result.template.Resources.Param.Properties).toEqual({
       Value: 'my-bucket',
-      Description: { 'Fn::If': ['IsProd', 'prod', 'dev'] },
+      Description: { 'Fn::GetAZs': '' },
     });
     expect(result.unresolved).toEqual([{
       path: 'Resources.Param.Properties.Description',
-      intrinsic: 'Fn::If',
-      reason: 'CloudFormation function Fn::If is not supported',
+      intrinsic: 'Fn::GetAZs',
+      reason: 'CloudFormation function Fn::GetAZs is not supported',
     }]);
   });
 
@@ -87,17 +87,111 @@ describe('evaluateTemplateBestEffort', () => {
     }]);
   });
 
+  test('reports an unsupported function itself, rather than its arguments', async () => {
+    const result = await evaluateTemplateBestEffort(fakeEvaluator({}), {
+      Outputs: { Azs: { Value: { 'Fn::Select': [0, { 'Fn::GetAZs': 'us-east-1' }] } } },
+    });
+
+    expect(result.unresolved.map((u) => [u.path, u.intrinsic])).toEqual([
+      ['Outputs.Azs.Value.Fn::Select.1', 'Fn::GetAZs'],
+      ['Outputs.Azs.Value', 'Fn::Select'],
+    ]);
+  });
+
   test('leaves the other template sections untouched', async () => {
     const template = {
       Parameters: { Env: { Type: 'String', Default: { Ref: 'NotEvaluated' } } },
-      Conditions: { IsProd: { 'Fn::Equals': [{ Ref: 'Env' }, 'prod'] } },
+      Mappings: { M: { K: { V: { Ref: 'NotEvaluated' } } } },
       Resources: {},
     };
 
     const result = await evaluateTemplateBestEffort(fakeEvaluator({}), template);
 
     expect(result.template.Parameters).toBe(template.Parameters);
-    expect(result.template.Conditions).toBe(template.Conditions);
+    expect(result.template.Mappings).toBe(template.Mappings);
     expect(result.unresolved).toEqual([]);
+  });
+
+  describe('conditions', () => {
+    const conditions = {
+      IsProd: { 'Fn::Equals': [{ Ref: 'Env' }, 'prod'] },
+      IsDev: { 'Fn::Not': [{ Condition: 'IsProd' }] },
+      IsProdInUsEast1: { 'Fn::And': [{ Condition: 'IsProd' }, { 'Fn::Equals': [{ Ref: 'AWS::Region' }, 'us-east-1'] }] },
+      IsProdOrDev: { 'Fn::Or': [{ Condition: 'IsProd' }, { Condition: 'IsDev' }] },
+      Unknowable: { 'Fn::Equals': [{ Ref: 'Missing' }, 'x'] },
+    };
+    const evaluator = fakeEvaluator({ 'Env': 'prod', 'AWS::Region': 'us-east-1', 'Bucket': 'my-bucket' });
+
+    test('picks the Fn::If branch of the evaluated condition', async () => {
+      const result = await evaluateTemplateBestEffort(evaluator, {
+        Conditions: conditions,
+        Outputs: {
+          A: { Value: { 'Fn::If': ['IsProd', 'prod-value', 'dev-value'] } },
+          B: { Value: { 'Fn::If': ['IsDev', 'dev-value', { Ref: 'Bucket' }] } },
+          C: { Value: { 'Fn::If': ['IsProdInUsEast1', 'yes', 'no'] } },
+          D: { Value: { 'Fn::If': ['IsProdOrDev', 'yes', 'no'] } },
+        },
+      });
+
+      expect(result.unresolved).toEqual([]);
+      expect(Object.fromEntries(Object.entries(result.template.Outputs).map(([k, v]: [string, any]) => [k, v.Value]))).toEqual({
+        A: 'prod-value', B: 'my-bucket', C: 'yes', D: 'yes',
+      });
+    });
+
+    test('removes properties and list elements that are AWS::NoValue', async () => {
+      const result = await evaluateTemplateBestEffort(evaluator, {
+        Conditions: conditions,
+        Resources: {
+          Bucket: {
+            Type: 'AWS::S3::Bucket',
+            Properties: {
+              BucketName: { 'Fn::If': ['IsDev', 'dev-bucket', { Ref: 'AWS::NoValue' }] },
+              Tags: [{ Key: 'a', Value: '1' }, { 'Fn::If': ['IsDev', { Key: 'b', Value: '2' }, { Ref: 'AWS::NoValue' }] }],
+            },
+          },
+        },
+      });
+
+      expect(result.unresolved).toEqual([]);
+      expect(result.template.Resources.Bucket.Properties).toEqual({ Tags: [{ Key: 'a', Value: '1' }] });
+    });
+
+    test('evaluates functions whose arguments contain Fn::If', async () => {
+      const result = await evaluateTemplateBestEffort(evaluator, {
+        Conditions: conditions,
+        Outputs: { Joined: { Value: { 'Fn::Join': ['-', [{ Ref: 'Bucket' }, { 'Fn::If': ['IsProd', 'prod', 'dev'] }]] } } },
+      });
+
+      expect(result.unresolved).toEqual([]);
+      expect(result.template.Outputs.Joined.Value).toEqual('my-bucket-prod');
+    });
+
+    test('drops resources and outputs whose condition is false', async () => {
+      const result = await evaluateTemplateBestEffort(evaluator, {
+        Conditions: conditions,
+        Resources: {
+          ProdOnly: { Type: 'AWS::SNS::Topic', Condition: 'IsProd' },
+          DevOnly: { Type: 'AWS::SNS::Topic', Condition: 'IsDev' },
+        },
+        Outputs: { DevOutput: { Condition: 'IsDev', Value: 'x' } },
+      });
+
+      expect(Object.keys(result.template.Resources)).toEqual(['ProdOnly']);
+      expect(result.template.Outputs).toEqual({});
+    });
+
+    test('keeps Fn::If and reports it when the condition cannot be evaluated', async () => {
+      const result = await evaluateTemplateBestEffort(evaluator, {
+        Conditions: conditions,
+        Outputs: { Value: { Value: { 'Fn::If': ['Unknowable', 'a', 'b'] } } },
+      });
+
+      expect(result.template.Outputs.Value.Value).toEqual({ 'Fn::If': ['Unknowable', 'a', 'b'] });
+      expect(result.unresolved).toEqual([
+        { path: 'Conditions.Unknowable.Fn::Equals.0', intrinsic: 'Ref', reason: "Parameter or resource 'Missing' could not be found for evaluation" },
+        { path: 'Outputs.Value.Value', intrinsic: 'Fn::If', reason: "condition 'Unknowable' could not be evaluated" },
+      ]);
+    });
   });
 });
