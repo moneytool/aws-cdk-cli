@@ -1,8 +1,11 @@
-import type { EvaluateCloudFormationTemplate } from './evaluate-cloudformation-template';
-import { CfnEvaluationException } from './evaluate-cloudformation-template';
+import type { CloudFormationStackArtifact } from '@aws-cdk/cloud-assembly-api';
+import { CfnEvaluationException, CfnUnsupportedFunctionException, EvaluateCloudFormationTemplate } from './evaluate-cloudformation-template';
+import type { NestedStackTemplates } from './nested-stack-helpers';
+import { loadCurrentTemplateWithNestedStacks } from './nested-stack-helpers';
 import type { Template } from './stack-helpers';
-import type { UnresolvedExpression } from '../../actions/evaluate';
-import { formatErrorMessage } from '../../util';
+import type { EvaluatedStack, UnresolvedExpression } from '../../actions/evaluate';
+import { formatErrorMessage, parallelPromises } from '../../util';
+import type { SDK } from '../aws-auth/private';
 
 /**
  * A template with as many expressions as possible replaced by their values
@@ -17,6 +20,23 @@ export interface BestEffortEvaluation {
    * The expressions that could not be evaluated
    */
   readonly unresolved: UnresolvedExpression[];
+}
+
+export interface BestEffortOptions {
+  /**
+   * Parameters whose values can't be used, with the reason (for example NoEcho parameters, whose deployed values
+   * CloudFormation masks). Expressions that reference them are reported instead of evaluated.
+   *
+   * @default - all parameter values can be used
+   */
+  readonly unavailableParameters?: { [name: string]: string };
+
+  /**
+   * Maximum number of attribute lookups to run at the same time
+   *
+   * @default 8
+   */
+  readonly lookupConcurrency?: number;
 }
 
 /** `{ "Ref": "AWS::NoValue" }`: the enclosing property or list element is removed */
@@ -34,8 +54,8 @@ type Truth = boolean | undefined;
  *
  * An expression that cannot be evaluated does not stop the rest: it is kept in place (with its arguments
  * evaluated where possible) and reported. When an expression fails because one of its arguments failed,
- * only the innermost failure is reported. Expressions that reference `NoEcho` parameters are reported rather than
- * evaluated, since CloudFormation only returns a mask for their values.
+ * only the innermost failure is reported. Expressions that reference unavailable parameters (such as `NoEcho`
+ * parameters, whose deployed values CloudFormation masks) are reported rather than evaluated.
  *
  * Only evaluation failures are reported this way. Any other error (for example expired credentials, throttling,
  * or a lookup that failed for a reason other than the resource or attribute not being found) is thrown.
@@ -43,12 +63,12 @@ type Truth = boolean | undefined;
 export async function evaluateTemplateBestEffort(
   evaluator: EvaluateCloudFormationTemplate,
   template: Template,
+  options: BestEffortOptions = {},
 ): Promise<BestEffortEvaluation> {
   const unresolved: UnresolvedExpression[] = [];
   const conditions = new Map<string, Promise<Truth>>();
-  const noEcho = new Set(Object.entries(template.Parameters ?? {})
-    .filter(([, p]) => p.NoEcho === true || String(p.NoEcho) === 'true')
-    .map(([name]) => name));
+  const unavailable = options.unavailableParameters ?? {};
+  const noEcho = new Set(Object.keys(unavailable));
   // The same expression has the same value everywhere in a stack: evaluate it once (saves repeated lookups).
   // Only values and evaluation failures are kept; anything else is thrown and not remembered.
   const evaluations = new Map<string, Promise<any>>();
@@ -158,7 +178,7 @@ export async function evaluateTemplateBestEffort(
         return evaluate({ [intrinsic]: args }, path);
       }
       if (unresolved.length === before) {
-        unresolved.push({ path, intrinsic, reason: `references NoEcho parameter ${masked.map((m) => `'${m}'`).join(', ')}, whose deployed value can't be read` });
+        unresolved.push({ path, intrinsic, reason: masked.map((m) => `references parameter '${m}': ${unavailable[m]}`).join('; ') });
       }
       return { [intrinsic]: args };
     }
@@ -170,7 +190,7 @@ export async function evaluateTemplateBestEffort(
       }
       const before = unresolved.length;
       const args = await evaluate(node[intrinsic], `${path}.${intrinsic}`);
-      const unsupported = formatErrorMessage(e).includes(`function ${intrinsic} is not supported`);
+      const unsupported = e instanceof CfnUnsupportedFunctionException && e.functionName === intrinsic;
       if (!unsupported && unresolved.length === before && !containsExpression(args)) {
         // The arguments contained expressions only this function evaluates (Fn::If, AWS::NoValue): retry with their values
         try {
@@ -200,6 +220,12 @@ export async function evaluateTemplateBestEffort(
     }
     return out;
   }
+
+  // Attribute lookups are the slow part: run the distinct ones up front, a few at a time. The walk below then gets
+  // them from `evaluations`; a lookup that failed for a reason other than evaluation is retried there and thrown.
+  const lookups = new Map<string, any>();
+  collectAttributeLookups([template.Resources, template.Outputs], lookups);
+  await parallelPromises(options.lookupConcurrency ?? 8, [...lookups.values()].map((node) => () => evaluateOnce(node).catch(() => undefined)));
 
   const evaluated: Template = { ...template };
   for (const section of ['Resources', 'Outputs']) {
@@ -277,7 +303,20 @@ function noEchoReferences(node: any, noEcho: Set<string>): string[] {
   return [...found];
 }
 
-function containsExpression(value: any): boolean {
+/** Distinct `Fn::GetAtt` expressions with literal arguments */
+function collectAttributeLookups(value: any, into: Map<string, any>) {
+  if (Array.isArray(value)) {
+    value.forEach((x) => collectAttributeLookups(x, into));
+  } else if (value !== null && typeof value === 'object') {
+    if (intrinsicName(value) === 'Fn::GetAtt' && !containsExpression(value['Fn::GetAtt'])) {
+      into.set(JSON.stringify(value), value);
+      return;
+    }
+    Object.values(value).forEach((x) => collectAttributeLookups(x, into));
+  }
+}
+
+export function containsExpression(value: any): boolean {
   if (Array.isArray(value)) {
     return value.some(containsExpression);
   }
@@ -285,4 +324,101 @@ function containsExpression(value: any): boolean {
     return intrinsicName(value) !== undefined || Object.values(value).some(containsExpression);
   }
   return false;
+}
+
+export interface EvaluateStackProps {
+  readonly stackArtifact: CloudFormationStackArtifact;
+  /** The deployed stack's parameter values, without the ones in `unavailableParameters` */
+  readonly parameters: { [name: string]: string };
+  readonly unavailableParameters: { [name: string]: string };
+  readonly stackId: string;
+  readonly account: string;
+  readonly region: string;
+  readonly partition: string;
+  readonly sdk: SDK;
+}
+
+/**
+ * Evaluates a deployed stack's template and, recursively, the templates of its CDK-managed nested stacks.
+ *
+ * A nested stack is evaluated with the parameter values its parent passes, as evaluated in the parent;
+ * values the parent could not evaluate are unavailable in the nested stack.
+ */
+export async function evaluateStackBestEffort(props: EvaluateStackProps): Promise<EvaluatedStack> {
+  const { stackArtifact, sdk } = props;
+  const currentTemplate = await loadCurrentTemplateWithNestedStacks(stackArtifact, sdk);
+  const common = {
+    stackArtifact,
+    account: props.account,
+    region: props.region,
+    partition: props.partition,
+    sdk,
+    // shared by all the stacks' evaluators, so each stack is listed at most once
+    stackResourcesByStackName: new Map(),
+  };
+
+  async function evaluateStack(
+    stackName: string,
+    hierarchicalId: string,
+    template: Template,
+    parameters: { [name: string]: string },
+    unavailableParameters: { [name: string]: string },
+    stackId: string,
+    nestedStacks: { [logicalId: string]: NestedStackTemplates },
+  ): Promise<EvaluatedStack> {
+    const evaluator = new EvaluateCloudFormationTemplate({
+      ...common,
+      stackName,
+      template,
+      // pseudo parameters the evaluator does not provide itself
+      parameters: { ...parameters, 'AWS::StackName': stackName, 'AWS::StackId': stackId },
+      nestedStacks,
+    });
+    const evaluation = await evaluateTemplateBestEffort(evaluator, template, { unavailableParameters });
+
+    const evaluatedNestedStacks: { [logicalId: string]: EvaluatedStack } = {};
+    for (const [logicalId, nested] of Object.entries(nestedStacks)) {
+      const resource = evaluation.template.Resources?.[logicalId];
+      if (!nested.physicalName || !resource) {
+        continue; // not deployed, or not created because of its condition
+      }
+      const nestedParameters: { [name: string]: string } = {};
+      const nestedUnavailable: { [name: string]: string } = {};
+      for (const [name, value] of Object.entries<any>(resource.Properties?.Parameters ?? {})) {
+        if (containsExpression(value)) {
+          nestedUnavailable[name] = `the value passed by stack '${stackName}' could not be evaluated`;
+        } else {
+          nestedParameters[name] = Array.isArray(value) ? value.join(',') : String(value);
+        }
+      }
+      const nestedStackId = await evaluator.evaluateCfnExpression({ Ref: logicalId });
+      evaluatedNestedStacks[logicalId] = await evaluateStack(
+        nested.physicalName,
+        `${hierarchicalId}/${logicalId}`,
+        nested.generatedTemplate,
+        nestedParameters,
+        nestedUnavailable,
+        nestedStackId,
+        nested.nestedStackTemplates,
+      );
+    }
+
+    return {
+      stackName,
+      hierarchicalId,
+      template: evaluation.template,
+      unresolved: evaluation.unresolved,
+      ...(Object.keys(evaluatedNestedStacks).length > 0 ? { nestedStacks: evaluatedNestedStacks } : {}),
+    };
+  }
+
+  return evaluateStack(
+    stackArtifact.stackName,
+    stackArtifact.hierarchicalId,
+    stackArtifact.template,
+    props.parameters,
+    props.unavailableParameters,
+    props.stackId,
+    currentTemplate.nestedStacks,
+  );
 }

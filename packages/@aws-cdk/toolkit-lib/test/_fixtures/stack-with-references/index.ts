@@ -3,7 +3,11 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as core from 'aws-cdk-lib/core';
 
 export default async () => {
-  const app = new core.App({ autoSynth: false });
+  const app = new core.App({
+    autoSynth: false,
+    // keep local paths out of the checked-in metadata
+    context: { 'aws:cdk:disable-creation-stack-traces': true },
+  });
   const stack = new core.Stack(app, 'Stack1', {
     env: {
       account: '123456789012',
@@ -18,5 +22,8 @@ export default async () => {
   new core.CfnOutput(stack, 'BucketDomain', { value: bucket.bucketRegionalDomainName });
   new core.CfnOutput(stack, 'Name', { value: core.Aws.STACK_NAME });
   new core.CfnOutput(stack, 'Joined', { value: core.Fn.join('-', [bucket.bucketName, core.Aws.REGION]) });
+  // A nested stack that gets the bucket name as a parameter
+  const nested = new core.NestedStack(stack, 'Nested');
+  new ssm.StringParameter(nested, 'NestedBucketName', { stringValue: bucket.bucketName });
   return app.synth();
 };

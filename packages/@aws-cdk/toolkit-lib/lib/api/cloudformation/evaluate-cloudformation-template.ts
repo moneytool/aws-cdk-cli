@@ -82,6 +82,15 @@ export class LazyLookupExport implements LookupExport {
 export class CfnEvaluationException extends Error {
 }
 
+/**
+ * The template uses an intrinsic function the evaluator does not support
+ */
+export class CfnUnsupportedFunctionException extends CfnEvaluationException {
+  constructor(public readonly functionName: string) {
+    super(`CloudFormation function ${functionName} is not supported`);
+  }
+}
+
 function assertEvaluatesToArray(intrinsic: string, value: any): asserts value is any[] {
   if (!Array.isArray(value)) {
     throw new CfnEvaluationException(`${intrinsic}: expected an array, got ${JSON.stringify(value)}`);
@@ -275,7 +284,7 @@ export class EvaluateCloudFormationTemplate {
       public evaluateIntrinsic(intrinsic: Intrinsic): any {
         const intrinsicFunc = (this as any)[intrinsic.name];
         if (!intrinsicFunc) {
-          throw new CfnEvaluationException(`CloudFormation function ${intrinsic.name} is not supported`);
+          throw new CfnUnsupportedFunctionException(intrinsic.name);
         }
 
         const argsAsArray = Array.isArray(intrinsic.args) ? intrinsic.args : [intrinsic.args];

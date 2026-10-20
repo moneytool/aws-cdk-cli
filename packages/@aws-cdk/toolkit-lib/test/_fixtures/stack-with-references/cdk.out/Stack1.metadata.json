@@ -1,152 +1,80 @@
 {
-  "/Stack1": [
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:7:17)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
-    }
-  ],
   "/Stack1/BucketArn": [
     {
       "type": "aws:cdk:logicalId",
       "data": "BucketArn"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:17:3)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
     }
   ],
   "/Stack1/BucketDomain": [
     {
       "type": "aws:cdk:logicalId",
       "data": "BucketDomain"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:18:3)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
     }
   ],
   "/Stack1/Name": [
     {
       "type": "aws:cdk:logicalId",
       "data": "Name"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:19:3)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
     }
   ],
   "/Stack1/Joined": [
     {
       "type": "aws:cdk:logicalId",
       "data": "Joined"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:20:3)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
     }
   ],
   "/Stack1/BootstrapVersion": [
     {
       "type": "aws:cdk:logicalId",
       "data": "BootstrapVersion"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "...aws-cdk-lib...",
-        "(no user code in 10 frames, use --stack-trace-limit to capture more)"
-      ]
     }
   ],
   "/Stack1/CheckBootstrapVersion": [
     {
       "type": "aws:cdk:logicalId",
       "data": "CheckBootstrapVersion"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "...aws-cdk-lib...",
-        "(no user code in 10 frames, use --stack-trace-limit to capture more)"
-      ]
     }
   ],
   "/Stack1/MyBucket/Resource": [
     {
       "type": "aws:cdk:logicalId",
       "data": "MyBucketF68F3FF0"
-    },
-    {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "...new Bucket2 in aws-cdk-lib...",
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:13:18)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
     }
   ],
   "/Stack1/BucketName/Resource": [
     {
       "type": "aws:cdk:logicalId",
       "data": "BucketName742CD8B0"
-    },
+    }
+  ],
+  "/Stack1/Nested/reference-to-Stack1MyBucket3E4D6F6CRef": [
     {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "...new StringParameter2 in aws-cdk-lib...",
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:15:3)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)",
-        "async ContextAwareCloudAssemblySource.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/private/context-aware-source.ts:72:56)",
-        "async generateFixture (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:33:15)",
-        "async main (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/scripts/gen-fixture-cdk-out.ts:61:5)"
-      ]
+      "type": "aws:cdk:logicalId",
+      "data": "referencetoStack1MyBucket3E4D6F6CRef"
+    }
+  ],
+  "/Stack1/Nested.NestedStack/Nested.NestedStackResource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "NestedNestedStackNestedNestedStackResourceDEFDAA4D"
     }
   ],
   "/Stack1/CDKMetadata/Default": [
     {
       "type": "aws:cdk:logicalId",
       "data": "CDKMetadata"
-    },
+    }
+  ],
+  "/Stack1/Nested/NestedBucketName/Resource": [
     {
-      "type": "aws:cdk:creationStack",
-      "data": [
-        "...App.synth in aws-cdk-lib...",
-        "default (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/test/_fixtures/stack-with-references/index.ts:21:14)",
-        "Object.produce (/Users/ianhou/workplace/aws-cdk-cli-evaluate/packages/@aws-cdk/toolkit-lib/lib/api/cloud-assembly/source-builder.ts:376:30)"
-      ]
+      "type": "aws:cdk:logicalId",
+      "data": "NestedBucketName7CD077DC"
+    }
+  ],
+  "/Stack1/Nested/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
     }
   ]
 }

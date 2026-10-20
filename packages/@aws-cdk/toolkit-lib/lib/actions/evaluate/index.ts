@@ -54,6 +54,8 @@ export interface EvaluatedStack {
 
   /**
    * The hierarchical id of the stack in the cloud assembly
+   *
+   * For a nested stack, the hierarchical id of its parent followed by the nested stack's logical id.
    */
   readonly hierarchicalId: string;
 
@@ -69,6 +71,15 @@ export interface EvaluatedStack {
    * Expressions that could not be evaluated
    */
   readonly unresolved: UnresolvedExpression[];
+
+  /**
+   * The stack's deployed CDK-managed nested stacks, evaluated the same way, by logical id
+   *
+   * A nested stack gets the parameter values its parent passes, as evaluated in the parent.
+   *
+   * @default - the stack has no nested stacks
+   */
+  readonly nestedStacks?: { [logicalId: string]: EvaluatedStack };
 }
 
 /**
@@ -79,4 +90,9 @@ export interface EvaluateResult {
    * The evaluated stacks
    */
   readonly stacks: EvaluatedStack[];
+
+  /**
+   * Names of the selected stacks that are not deployed, and so were not evaluated
+   */
+  readonly notDeployed: string[];
 }

@@ -80,7 +80,7 @@ import { ALL_STACKS } from '../api/cloud-assembly/private';
 import { AsyncDisposableBox } from '../api/cloud-assembly/private/disposable-box';
 import { CloudAssemblySourceBuilder } from '../api/cloud-assembly/source-builder';
 import { combineConclusions, type StackCollection } from '../api/cloud-assembly/stack-collection';
-import { CloudFormationStack as DeployedStack, EvaluateCloudFormationTemplate, evaluateTemplateBestEffort, loadCurrentTemplateWithNestedStacks } from '../api/cloudformation';
+import { CloudFormationStack as DeployedStack, evaluateStackBestEffort } from '../api/cloudformation';
 import { Deployments } from '../api/deployments';
 import { createValidationChangeSet } from '../api/deployments/cfn-api';
 import { hostMessageFromDiagnosis } from '../api/diagnosing/diagnosis-formatting';
@@ -114,7 +114,7 @@ import type { AssetBuildNode, AssetPublishNode, Concurrency, StackNode } from '.
 import { WorkGraph, WorkGraphBuilder, buildDestroyWorkGraph } from '../api/work-graph';
 import type { AssemblyData, RefactorResult, StackDetails, SuccessfulDeployStackResult } from '../payloads';
 import { PermissionChangeType } from '../payloads';
-import { formatErrorMessage, formatExpressStabilizationWarning, formatTime, obscureTemplate, serializeStructure, toCloudFormationRollbackConfiguration, validateSnsTopicArn } from '../util';
+import { formatErrorMessage, formatExpressStabilizationWarning, formatTime, obscureTemplate, parallelPromises, serializeStructure, toCloudFormationRollbackConfiguration, validateSnsTopicArn } from '../util';
 import { pLimit } from '../util/concurrency';
 import { createIgnoreMatcher } from '../util/glob-matcher';
 import { promiseWithResolvers } from '../util/promises';
@@ -690,10 +690,10 @@ export class Toolkit extends CloudAssemblySourceBuilder {
    * by their deployed values. This gives the concrete values CloudFormation used for each resource, for
    * example to compare them with the live state of the resources.
    *
-   * Expressions are evaluated one at a time. Expressions that cannot be evaluated are left in place
-   * and reported with the reason, so one unresolvable expression does not prevent the rest.
+   * Expressions that cannot be evaluated are left in place and reported with the reason, so one unresolvable
+   * expression does not prevent the rest. CDK-managed nested stacks are evaluated with their parent.
    *
-   * The stacks must already be deployed.
+   * Selected stacks that are not deployed are skipped with a warning, and listed in `notDeployed`.
    */
   public async evaluate(cx: ICloudAssemblySource, options: EvaluateOptions = {}): Promise<EvaluateResult> {
     this.requireUnstableFeature('evaluate');
@@ -704,45 +704,45 @@ export class Toolkit extends CloudAssemblySourceBuilder {
     const stackCollection = await assembly.selectStacks(selectStacks);
     const envs = new EnvironmentAccess(await this.sdkProvider('evaluate'), options.toolkitStackName ?? DEFAULT_TOOLKIT_STACK_NAME, ioHelper);
 
-    const stacks: EvaluatedStack[] = [];
-    for (const stack of stackCollection.stackArtifacts) {
+    const concurrency = options.concurrency ?? 10;
+    if (!Number.isInteger(concurrency) || concurrency < 1) {
+      throw new ToolkitError('InvalidConcurrency', `concurrency must be a positive integer, got ${concurrency}`);
+    }
+    const artifacts = stackCollection.stackArtifacts;
+    const results: Array<EvaluatedStack | undefined> = new Array(artifacts.length);
+    const evaluateStack = async (index: number) => {
+      const stack = artifacts[index];
       const stackEnv = await envs.accessStackForLookupBestEffort(stack);
       const sdk = stackEnv.sdk;
 
       const deployed = await DeployedStack.lookup(sdk.cloudFormation(), stack.stackName);
       if (!deployed.exists) {
-        throw new ToolkitError('StackNotDeployed', `stack '${stack.stackName}' is not deployed in ${stackEnv.resolvedEnvironment.name}, deploy it before evaluating its template`);
+        await ioHelper.defaults.warn(`Stack '${stack.stackName}' is not deployed in ${stackEnv.resolvedEnvironment.name}, skipping it`);
+        return;
       }
-      const noEcho = Object.entries(stack.template.Parameters ?? {}).filter(([, p]: [string, any]) => String(p.NoEcho) === 'true').map(([n]) => n);
-      const parameters = {
-        // NoEcho values come back masked; expressions that use them are reported as unresolved instead
-        ...Object.fromEntries(Object.entries(deployed.parameters).filter(([name]) => !noEcho.includes(name))),
-        // pseudo parameters the evaluator does not provide itself
-        'AWS::StackName': stack.stackName,
-        'AWS::StackId': deployed.stackId,
-      };
+      // NoEcho values come back masked; expressions that use them are reported as unresolved instead
+      const unavailableParameters = Object.fromEntries(Object.entries<any>(stack.template.Parameters ?? {})
+        .filter(([, p]) => String(p.NoEcho) === 'true')
+        .map(([name]) => [name, 'NoEcho parameter, whose deployed value can\'t be read']));
 
-      const currentTemplate = await loadCurrentTemplateWithNestedStacks(stack, sdk);
-      const evaluator = new EvaluateCloudFormationTemplate({
+      results[index] = await evaluateStackBestEffort({
         stackArtifact: stack,
-        parameters,
+        parameters: Object.fromEntries(Object.entries(deployed.parameters).filter(([name]) => !(name in unavailableParameters))),
+        unavailableParameters,
+        stackId: deployed.stackId,
         account: stackEnv.resolvedEnvironment.account,
         region: stackEnv.resolvedEnvironment.region,
         partition: (await sdk.currentAccount()).partition,
         sdk,
-        nestedStacks: currentTemplate.nestedStacks,
       });
-      const evaluation = await evaluateTemplateBestEffort(evaluator, stack.template);
+    };
 
-      stacks.push({
-        stackName: stack.stackName,
-        hierarchicalId: stack.hierarchicalId,
-        template: evaluation.template,
-        unresolved: evaluation.unresolved,
-      });
-    }
+    await parallelPromises(concurrency, artifacts.map((_, index) => () => evaluateStack(index)));
 
-    return { stacks };
+    return {
+      stacks: results.filter((r): r is EvaluatedStack => r !== undefined),
+      notDeployed: artifacts.filter((_, i) => results[i] === undefined).map((a) => a.stackName),
+    };
   }
 
   /**

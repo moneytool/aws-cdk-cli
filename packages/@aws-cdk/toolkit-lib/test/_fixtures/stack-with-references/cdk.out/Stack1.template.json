@@ -20,10 +20,39 @@
     "aws:cdk:path": "Stack1/BucketName/Resource"
    }
   },
+  "NestedNestedStackNestedNestedStackResourceDEFDAA4D": {
+   "Type": "AWS::CloudFormation::Stack",
+   "Properties": {
+    "Parameters": {
+     "referencetoStack1MyBucket3E4D6F6CRef": {
+      "Ref": "MyBucketF68F3FF0"
+     }
+    },
+    "TemplateURL": {
+     "Fn::Join": [
+      "",
+      [
+       "https://s3.us-east-1.",
+       {
+        "Ref": "AWS::URLSuffix"
+       },
+       "/cdk-hnb659fds-assets-123456789012-us-east-1/79bf57b1b3bbe8f179f2b75327d6f95f059a31631484c17e6ee3aaceea8a0264.json"
+      ]
+     ]
+    }
+   },
+   "UpdateReplacePolicy": "Delete",
+   "DeletionPolicy": "Delete",
+   "Metadata": {
+    "aws:cdk:path": "Stack1/Nested.NestedStack/Nested.NestedStackResource",
+    "aws:asset:path": "Stack1Nested36ADE314.nested.template.json",
+    "aws:asset:property": "TemplateURL"
+   }
+  },
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2KQQ7CIBBFz9I9jISauNcDaPQABulopgg2zGAXhLsb0sTV+y//WbCHEczgVtZ+CvpND6g3cT4ot/K98gj1WHxAUadn2lZTzLFXmdLr4rKLKJj7/5fWup6LLEWaSp8JYebd1+7BGjDDzEQ6lyQUEa4bfzwTQrKKAAAA"
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2MTQ7CIBCFz9I9jIQ2ca8H0OgBzEjRTBFsGLALwt0b2sTVe1/ejwZ97EF1uLA0o5MfekK5JzRO4MKPwj2UUzbOJnF+hd1VwexbK1J4XzGit8nGlv+h1oaXnOa8DbfHKsJ3tDDx4acH0ApUNzGRjDkk8hZuu67T1gU0kwAAAA=="
    },
    "Metadata": {
     "aws:cdk:path": "Stack1/CDKMetadata/Default"

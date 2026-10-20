@@ -1,5 +1,5 @@
 import type { EvaluateCloudFormationTemplate } from '../../../lib/api/cloudformation';
-import { CfnEvaluationException, evaluateTemplateBestEffort } from '../../../lib/api/cloudformation';
+import { CfnEvaluationException, CfnUnsupportedFunctionException, evaluateTemplateBestEffort } from '../../../lib/api/cloudformation';
 
 /**
  * An evaluator that knows a fixed set of Refs and Fn::Join, and fails on everything else,
@@ -27,7 +27,7 @@ function fakeEvaluator(refs: { [logicalId: string]: string }): EvaluateCloudForm
       const [sep, parts] = expr['Fn::Join'];
       return (await evaluateCfnExpression(parts)).join(sep);
     }
-    throw new CfnEvaluationException(`CloudFormation function ${Object.keys(expr)[0]} is not supported`);
+    throw new CfnUnsupportedFunctionException(Object.keys(expr)[0]);
   }
   return { evaluateCfnExpression } as unknown as EvaluateCloudFormationTemplate;
 }
@@ -207,10 +207,11 @@ describe('evaluateTemplateBestEffort', () => {
     });
   });
 
-  describe('NoEcho parameters', () => {
+  describe('unavailable parameters', () => {
     const parameters = { Secret: { Type: 'String', NoEcho: true }, Env: { Type: 'String' } };
     // CloudFormation returns '****' for NoEcho values: the evaluator would happily use it
     const evaluator = fakeEvaluator({ Secret: '****', Env: 'prod', Bucket: 'my-bucket' });
+    const options = { unavailableParameters: { Secret: 'NoEcho parameter' } };
 
     test('reports expressions that reference them instead of evaluating them', async () => {
       const result = await evaluateTemplateBestEffort(evaluator, {
@@ -220,7 +221,7 @@ describe('evaluateTemplateBestEffort', () => {
           Joined: { Value: { 'Fn::Join': ['-', [{ Ref: 'Bucket' }, { Ref: 'Secret' }]] } },
           Sub: { Value: { 'Fn::Sub': 'password=${Secret}' } },
         },
-      });
+      }, options);
 
       expect(result.template.Outputs.Direct.Value).toEqual({ Ref: 'Secret' });
       expect(result.template.Outputs.Joined.Value).toEqual({ 'Fn::Join': ['-', ['my-bucket', { Ref: 'Secret' }]] });
@@ -230,7 +231,7 @@ describe('evaluateTemplateBestEffort', () => {
         ['Outputs.Joined.Value.Fn::Join.1.1', 'Ref'],
         ['Outputs.Sub.Value', 'Fn::Sub'],
       ]);
-      expect(result.unresolved[0].reason).toEqual("references NoEcho parameter 'Secret', whose deployed value can't be read");
+      expect(result.unresolved[0].reason).toEqual("references parameter 'Secret': NoEcho parameter");
     });
 
     test('a condition that uses one cannot be evaluated', async () => {
@@ -238,7 +239,7 @@ describe('evaluateTemplateBestEffort', () => {
         Parameters: parameters,
         Conditions: { HasSecret: { 'Fn::Not': [{ 'Fn::Equals': [{ Ref: 'Secret' }, ''] }] } },
         Outputs: { Value: { Value: { 'Fn::If': ['HasSecret', 'yes', 'no'] } } },
-      });
+      }, options);
 
       expect(result.template.Outputs.Value.Value).toEqual({ 'Fn::If': ['HasSecret', 'yes', 'no'] });
       expect(result.unresolved.map((u) => u.intrinsic)).toEqual(['Ref', 'Fn::If']);
@@ -252,7 +253,7 @@ describe('evaluateTemplateBestEffort', () => {
           Value: { Value: { 'Fn::If': ['IsProd', 'prod', { Ref: 'Secret' }] } },
           Joined: { Value: { 'Fn::Join': ['-', [{ Ref: 'Bucket' }, { 'Fn::If': ['IsProd', 'prod', { Ref: 'Secret' }] }]] } },
         },
-      });
+      }, options);
 
       expect(result.unresolved).toEqual([]);
       expect(result.template.Outputs.Value.Value).toEqual('prod');
@@ -287,6 +288,40 @@ describe('evaluateTemplateBestEffort', () => {
       const evaluator = failingEvaluator(new CfnEvaluationException('Could not find attribute', { cause }));
 
       await expect(evaluateTemplateBestEffort(evaluator, template)).rejects.toThrow('Could not find attribute');
+    });
+
+    test('looks up attributes before the walk, a few at a time, and throws lookup failures from the walk', async () => {
+      let running = 0;
+      let maxRunning = 0;
+      const cause = Object.assign(new Error('Rate exceeded'), { name: 'ThrottlingException' });
+      const evaluator = {
+        calls: [] as string[],
+        async evaluateCfnExpression(expr: any): Promise<any> {
+          evaluator.calls.push(JSON.stringify(expr));
+          running++;
+          maxRunning = Math.max(maxRunning, running);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          running--;
+          if (expr['Fn::GetAtt'][0] === 'Throttled') {
+            throw new CfnEvaluationException('Could not find attribute', { cause });
+          }
+          return `${expr['Fn::GetAtt'][0]}.${expr['Fn::GetAtt'][1]}`;
+        },
+      };
+      const outputs = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`O${i}`, { Value: { 'Fn::GetAtt': [`R${i}`, 'Arn'] } }]));
+
+      const result = await evaluateTemplateBestEffort(
+        evaluator as unknown as EvaluateCloudFormationTemplate,
+        { Outputs: outputs },
+        { lookupConcurrency: 2 },
+      );
+      expect(maxRunning).toEqual(2);
+      expect(evaluator.calls).toHaveLength(6);
+      expect(result.template.Outputs.O5.Value).toEqual('R5.Arn');
+
+      await expect(evaluateTemplateBestEffort(evaluator as unknown as EvaluateCloudFormationTemplate, {
+        Outputs: { ...outputs, Bad: { Value: { 'Fn::GetAtt': ['Throttled', 'Arn'] } } },
+      })).rejects.toThrow('Could not find attribute');
     });
 
     test('reports lookups of resources that do not exist, and evaluates the same expression only once', async () => {

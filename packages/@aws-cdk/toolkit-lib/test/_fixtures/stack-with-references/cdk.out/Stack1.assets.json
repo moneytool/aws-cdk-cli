@@ -1,16 +1,31 @@
 {
   "version": "54.0.0",
   "files": {
-    "0ca8dbeb2757b2c7d6cc42c258d2e9ac807e70d1834d7c4febbcc87f0b02e95f": {
+    "79bf57b1b3bbe8f179f2b75327d6f95f059a31631484c17e6ee3aaceea8a0264": {
+      "displayName": "Nested Nested Stack Template",
+      "source": {
+        "path": "Stack1Nested36ADE314.nested.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "123456789012-us-east-1-1498841e": {
+          "bucketName": "cdk-hnb659fds-assets-123456789012-us-east-1",
+          "objectKey": "79bf57b1b3bbe8f179f2b75327d6f95f059a31631484c17e6ee3aaceea8a0264.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::123456789012:role/cdk-hnb659fds-file-publishing-role-123456789012-us-east-1"
+        }
+      }
+    },
+    "3d5801f5eac62a91eaa6baba7954bc2b9522f0dd49be8a8d418c60f61f714fe2": {
       "displayName": "Stack1 Template",
       "source": {
         "path": "Stack1.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "123456789012-us-east-1-aa97e9c6": {
+        "123456789012-us-east-1-99f22206": {
           "bucketName": "cdk-hnb659fds-assets-123456789012-us-east-1",
-          "objectKey": "0ca8dbeb2757b2c7d6cc42c258d2e9ac807e70d1834d7c4febbcc87f0b02e95f.json",
+          "objectKey": "3d5801f5eac62a91eaa6baba7954bc2b9522f0dd49be8a8d418c60f61f714fe2.json",
           "region": "us-east-1",
           "assumeRoleArn": "arn:${AWS::Partition}:iam::123456789012:role/cdk-hnb659fds-file-publishing-role-123456789012-us-east-1"
         }
