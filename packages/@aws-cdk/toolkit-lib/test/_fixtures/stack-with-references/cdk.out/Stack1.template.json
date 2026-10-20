@@ -1,0 +1,105 @@
+{
+ "Resources": {
+  "MyBucketF68F3FF0": {
+   "Type": "AWS::S3::Bucket",
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "Stack1/MyBucket/Resource"
+   }
+  },
+  "BucketName742CD8B0": {
+   "Type": "AWS::SSM::Parameter",
+   "Properties": {
+    "Type": "String",
+    "Value": {
+     "Ref": "MyBucketF68F3FF0"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "Stack1/BucketName/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/z2KQQ7CIBBFz9I9jISauNcDaPQABulopgg2zGAXhLsb0sTV+y//WbCHEczgVtZ+CvpND6g3cT4ot/K98gj1WHxAUadn2lZTzLFXmdLr4rKLKJj7/5fWup6LLEWaSp8JYebd1+7BGjDDzEQ6lyQUEa4bfzwTQrKKAAAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "Stack1/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "BucketArn": {
+   "Value": {
+    "Fn::GetAtt": [
+     "MyBucketF68F3FF0",
+     "Arn"
+    ]
+   }
+  },
+  "BucketDomain": {
+   "Value": {
+    "Fn::GetAtt": [
+     "MyBucketF68F3FF0",
+     "RegionalDomainName"
+    ]
+   }
+  },
+  "Name": {
+   "Value": {
+    "Ref": "AWS::StackName"
+   }
+  },
+  "Joined": {
+   "Value": {
+    "Fn::Join": [
+     "-",
+     [
+      {
+       "Ref": "MyBucketF68F3FF0"
+      },
+      {
+       "Ref": "AWS::Region"
+      }
+     ]
+    ]
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

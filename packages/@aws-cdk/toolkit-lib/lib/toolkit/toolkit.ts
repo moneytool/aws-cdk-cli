@@ -52,6 +52,7 @@ import type { DiagnosedStack, DiagnoseOptions, DiagnoseResult } from '../actions
 import type { DiffOptions } from '../actions/diff';
 import { appendObject, prepareDiff } from '../actions/diff/private';
 import type { DriftOptions, DriftResult } from '../actions/drift';
+import type { EvaluatedStack, EvaluateOptions, EvaluateResult } from '../actions/evaluate';
 import { type ListOptions } from '../actions/list';
 import type { OrphanOptions } from '../actions/orphan';
 import type { PublishAssetsOptions, PublishAssetsResult } from '../actions/publish-assets';
@@ -79,6 +80,7 @@ import { ALL_STACKS } from '../api/cloud-assembly/private';
 import { AsyncDisposableBox } from '../api/cloud-assembly/private/disposable-box';
 import { CloudAssemblySourceBuilder } from '../api/cloud-assembly/source-builder';
 import { combineConclusions, type StackCollection } from '../api/cloud-assembly/stack-collection';
+import { CloudFormationStack as DeployedStack, EvaluateCloudFormationTemplate, evaluateTemplateBestEffort, loadCurrentTemplateWithNestedStacks } from '../api/cloudformation';
 import { Deployments } from '../api/deployments';
 import { createValidationChangeSet } from '../api/deployments/cfn-api';
 import { hostMessageFromDiagnosis } from '../api/diagnosing/diagnosis-formatting';
@@ -182,7 +184,7 @@ export interface ToolkitOptions {
  * Names of toolkit features that are still under development, and may change in
  * the future.
  */
-export type UnstableFeature = 'refactor' | 'orphan' | 'flags' | 'publish-assets' | 'diagnose' | 'validate';
+export type UnstableFeature = 'refactor' | 'orphan' | 'flags' | 'publish-assets' | 'diagnose' | 'validate' | 'evaluate';
 
 /**
  * The AWS CDK Programmatic Toolkit
@@ -676,6 +678,67 @@ export class Toolkit extends CloudAssemblySourceBuilder {
 
       return ret;
     })));
+
+    return { stacks };
+  }
+
+  /**
+   * Evaluate Action
+   *
+   * Evaluates the templates of the selected stacks against their deployed stacks: references, attributes,
+   * parameters, pseudo parameters and the intrinsic functions supported by the hotswap evaluator are replaced
+   * by their deployed values. This gives the concrete values CloudFormation used for each resource, for
+   * example to compare them with the live state of the resources.
+   *
+   * Expressions are evaluated one at a time. Expressions that cannot be evaluated are left in place
+   * and reported with the reason, so one unresolvable expression does not prevent the rest.
+   *
+   * The stacks must already be deployed.
+   */
+  public async evaluate(cx: ICloudAssemblySource, options: EvaluateOptions = {}): Promise<EvaluateResult> {
+    this.requireUnstableFeature('evaluate');
+
+    const ioHelper = asIoHelper(this.ioHost, 'evaluate');
+    const selectStacks = stacksOpt(options);
+    await using assembly = await synthAndMeasure(ioHelper, cx, selectStacks);
+    const stackCollection = await assembly.selectStacks(selectStacks);
+    const envs = new EnvironmentAccess(await this.sdkProvider('evaluate'), options.toolkitStackName ?? DEFAULT_TOOLKIT_STACK_NAME, ioHelper);
+
+    const stacks: EvaluatedStack[] = [];
+    for (const stack of stackCollection.stackArtifacts) {
+      const stackEnv = await envs.accessStackForLookupBestEffort(stack);
+      const sdk = stackEnv.sdk;
+
+      const deployed = await DeployedStack.lookup(sdk.cloudFormation(), stack.stackName);
+      if (!deployed.exists) {
+        throw new ToolkitError('StackNotDeployed', `stack '${stack.stackName}' is not deployed in ${stackEnv.resolvedEnvironment.name}, deploy it before evaluating its template`);
+      }
+      const parameters = {
+        ...deployed.parameters,
+        // pseudo parameters the evaluator does not provide itself
+        'AWS::StackName': stack.stackName,
+        'AWS::StackId': deployed.stackId,
+      };
+
+      const currentTemplate = await loadCurrentTemplateWithNestedStacks(stack, sdk);
+      const evaluator = new EvaluateCloudFormationTemplate({
+        stackArtifact: stack,
+        parameters,
+        account: stackEnv.resolvedEnvironment.account,
+        region: stackEnv.resolvedEnvironment.region,
+        partition: (await sdk.currentAccount()).partition,
+        sdk,
+        nestedStacks: currentTemplate.nestedStacks,
+      });
+      const evaluation = await evaluateTemplateBestEffort(evaluator, stack.template);
+
+      stacks.push({
+        stackName: stack.stackName,
+        hierarchicalId: stack.hierarchicalId,
+        template: evaluation.template,
+        unresolved: evaluation.unresolved,
+      });
+    }
 
     return { stacks };
   }
