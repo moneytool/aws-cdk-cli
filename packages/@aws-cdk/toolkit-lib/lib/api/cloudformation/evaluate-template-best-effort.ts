@@ -41,6 +41,15 @@ export async function evaluateTemplateBestEffort(
 ): Promise<BestEffortEvaluation> {
   const unresolved: UnresolvedExpression[] = [];
   const conditions = new Map<string, Promise<Truth>>();
+  // The same expression has the same value everywhere in a stack: evaluate it once (saves repeated lookups)
+  const evaluations = new Map<string, Promise<any>>();
+  const evaluateOnce = (node: any): Promise<any> => {
+    const key = JSON.stringify(node);
+    if (!evaluations.has(key)) {
+      evaluations.set(key, evaluator.evaluateCfnExpression(node));
+    }
+    return evaluations.get(key)!;
+  };
 
   function condition(name: string): Promise<Truth> {
     if (!conditions.has(name)) {
@@ -126,7 +135,7 @@ export async function evaluateTemplateBestEffort(
     }
 
     try {
-      return await evaluator.evaluateCfnExpression(node);
+      return await evaluateOnce(node);
     } catch (e) {
       const before = unresolved.length;
       const args = await evaluate(node[intrinsic], `${path}.${intrinsic}`);
@@ -134,7 +143,7 @@ export async function evaluateTemplateBestEffort(
       if (!unsupported && unresolved.length === before && !containsExpression(args)) {
         // The arguments contained expressions only this function evaluates (Fn::If, AWS::NoValue): retry with their values
         try {
-          return await evaluator.evaluateCfnExpression({ [intrinsic]: args });
+          return await evaluateOnce({ [intrinsic]: args });
         } catch (retryError) {
           unresolved.push({ path, intrinsic, reason: formatErrorMessage(retryError) });
           return { [intrinsic]: args };
